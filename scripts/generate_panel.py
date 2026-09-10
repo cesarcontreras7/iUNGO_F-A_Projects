@@ -65,7 +65,7 @@ TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Panel de Herramientas — iUNGO</title>
+<title>Panel de Tableros y Procesos — iUNGO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -136,7 +136,7 @@ TEMPLATE = """<!DOCTYPE html>
 <header class="topbar">
   <img class="logo" src="{logo_path}" alt="iUNGO">
   <div class="title">
-    <h1>Panel de Herramientas</h1>
+    <h1>Panel de Tableros y Procesos</h1>
     <p>iUNGO — Finanzas y Contabilidad</p>
   </div>
 </header>
