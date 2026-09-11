@@ -6,6 +6,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <style>
   :root{
     --navy-deep:#0F1C50;
@@ -165,7 +166,7 @@
     <div class="spacer"></div>
     <div class="status"><span class="dot"></span><span id="lastUpdated">Cargando…</span></div>
     <button class="btn btn-ghost" id="refreshBtn">↻ Actualizar</button>
-    <button class="btn btn-primary" id="exportBtn">⬇ Exportar a CSV</button>
+    <button class="btn btn-primary" id="exportBtn">⬇ Exportar a Excel</button>
   </div>
 
   <div class="wrap">
@@ -730,9 +731,13 @@ function renderTableBody(rows){
     primary = SORT.dir * primary;
     if (primary !== 0) return primary;
 
-    // desempate: si estamos agrupando por restaurante, ordena los meses
-    // siempre de Enero a Junio (cronológico), sin importar la dirección del clic
+    // desempate: si estamos agrupando por restaurante, primero mantenemos
+    // juntas las filas del mismo restaurante (aunque su "No." se repita con
+    // el de otro restaurante en el Sheet de origen), y dentro de cada
+    // restaurante ordenamos los meses siempre de Enero a Junio
+    // (cronológico), sin importar la dirección del clic
     if (groupedByRestaurant) {
+      if (a.restaurant !== b.restaurant) return a.restaurant.localeCompare(b.restaurant, 'es');
       if (a.utility !== b.utility) return a.utility.localeCompare(b.utility, 'es');
       return (MONTH_INDEX[a.month]||0) - (MONTH_INDEX[b.month]||0);
     }
@@ -816,49 +821,212 @@ function renderTableBody(rows){
 // ---------------------------------------------------------------------------
 // EXPORTAR A EXCEL
 // ---------------------------------------------------------------------------
-function csvEscape_(v){
-  if (v === null || v === undefined) return '';
-  var s = v.toString();
-  if (/[",\n;]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
-  return s;
+// ---------------------------------------------------------------------------
+// EXPORTAR A EXCEL CON FORMATO (usando ExcelJS, 100% en el navegador)
+// Replica la misma estructura que buildFormattedSheet_ en Apps Script:
+// título con fondo navy, encabezados de mes fusionados con el color del
+// servicio, subencabezados, formato de moneda, fila de Total recalculada
+// y el logo de bia — pero generado aquí mismo, sin backend.
+// ---------------------------------------------------------------------------
+function buildFormattedSheetXlsx_(sheet, ds, months, restaurants, logoImageId){
+  var BRAND = {
+    navyDeep: 'FF0F1C50', navy: 'FF1D3565', red: 'FFEE2C37', blue: 'FF4888FD',
+    paleRed: 'FFFDECED', paleBlue: 'FFE8F0FE', paleGrey: 'FFF0F3FC', white: 'FFFFFFFF',
+  };
+  var utilityColor = ds.utility === 'Energía Eléctrica' ? BRAND.red : BRAND.blue;
+  var utilityPale = ds.utility === 'Energía Eléctrica' ? BRAND.paleRed : BRAND.paleBlue;
+  var numCols = 2 + months.length * 3;
+
+  if (logoImageId !== null){
+    try { sheet.addImage(logoImageId, { tl:{col:0.15, row:0.15}, ext:{width:96,height:46} }); } catch(e) {}
+  }
+
+  var titleRowIdx = 1, headerRowIdx = 3, subHeaderRowIdx = 4, dataStartIdx = 5;
+
+  sheet.mergeCells(titleRowIdx, 3, titleRowIdx, Math.max(3, numCols));
+  var titleCell = sheet.getRow(titleRowIdx).getCell(3);
+  titleCell.value = 'bia | ' + ds.chain + ' — ' + ds.utility;
+  titleCell.font = { size:13, bold:true, color:{argb:BRAND.white} };
+  titleCell.fill = { type:'pattern', pattern:'solid', fgColor:{argb:BRAND.navyDeep} };
+  titleCell.alignment = { vertical:'middle' };
+  sheet.getRow(titleRowIdx).height = 26;
+
+  sheet.mergeCells(headerRowIdx, 1, headerRowIdx+1, 1);
+  sheet.getRow(headerRowIdx).getCell(1).value = 'No.';
+  sheet.mergeCells(headerRowIdx, 2, headerRowIdx+1, 2);
+  sheet.getRow(headerRowIdx).getCell(2).value = 'Restaurante';
+  [[headerRowIdx,1],[headerRowIdx,2]].forEach(function(rc){
+    var c = sheet.getRow(rc[0]).getCell(rc[1]);
+    c.font = { bold:true, color:{argb:BRAND.white} };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:BRAND.navy} };
+    c.alignment = { vertical:'middle', horizontal:'center' };
+  });
+
+  months.forEach(function(m, i){
+    var col = 3 + i*3;
+    sheet.mergeCells(headerRowIdx, col, headerRowIdx, col+2);
+    var mc = sheet.getRow(headerRowIdx).getCell(col);
+    mc.value = m;
+    mc.font = { bold:true, color:{argb:BRAND.white} };
+    mc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:utilityColor} };
+    mc.alignment = { horizontal:'center', vertical:'middle' };
+
+    var subLabels = ds.utility === 'Energía Eléctrica'
+      ? ['Consumo kWh','Costo/kWh','Cargo P&L']
+      : ['Consumo m³','Costo/m³','Cargo P&L'];
+    subLabels.forEach(function(lbl, j){
+      var sc = sheet.getRow(subHeaderRowIdx).getCell(col+j);
+      sc.value = lbl;
+      sc.font = { bold:true, color:{argb:BRAND.navyDeep}, size:9 };
+      sc.fill = { type:'pattern', pattern:'solid', fgColor:{argb:utilityPale} };
+      sc.alignment = { horizontal:'center' };
+    });
+  });
+
+  var dataRows = restaurants.map(function(rest){
+    var row = [ (rest.no===null||rest.no===undefined?'':rest.no), rest.name ];
+    months.forEach(function(m){
+      var mm = (rest.months||{})[m] || {};
+      row.push(
+        mm.tarifaFija ? 'Tarifa fija' : (mm.consumo===null||mm.consumo===undefined ? '' : mm.consumo),
+        (mm.costo===null||mm.costo===undefined) ? '' : mm.costo,
+        (mm.cargo===null||mm.cargo===undefined) ? '' : mm.cargo
+      );
+    });
+    return row;
+  });
+
+  dataRows.forEach(function(row, i){
+    var r = sheet.getRow(dataStartIdx + i);
+    row.forEach(function(v, j){ r.getCell(j+1).value = v; });
+  });
+
+  var totalRowIdx = dataStartIdx + dataRows.length;
+  var totalRow = ['', 'Total'];
+  months.forEach(function(m){
+    var sum = 0;
+    restaurants.forEach(function(rest){
+      var mm = (rest.months||{})[m];
+      if (mm && typeof mm.cargo === 'number') sum += mm.cargo;
+    });
+    totalRow.push('', '', sum);
+  });
+  var tRow = sheet.getRow(totalRowIdx);
+  totalRow.forEach(function(v,j){
+    var c = tRow.getCell(j+1);
+    c.value = v;
+    c.font = { bold:true };
+    c.fill = { type:'pattern', pattern:'solid', fgColor:{argb:BRAND.paleGrey} };
+  });
+
+  months.forEach(function(m, i){
+    var col = 3 + i*3;
+    for (var r = dataStartIdx; r < dataStartIdx + dataRows.length; r++){
+      sheet.getRow(r).getCell(col).numFmt = '#,##0.0';
+      sheet.getRow(r).getCell(col+1).numFmt = '"Q"#,##0.00';
+      sheet.getRow(r).getCell(col+2).numFmt = '"Q"#,##0.00';
+    }
+    sheet.getRow(totalRowIdx).getCell(col+2).numFmt = '"Q"#,##0.00';
+  });
+
+  for (var r2 = headerRowIdx; r2 <= totalRowIdx; r2++){
+    for (var c2 = 1; c2 <= numCols; c2++){
+      sheet.getRow(r2).getCell(c2).border = {
+        top:{style:'thin', color:{argb:'FFD6DCEE'}},
+        left:{style:'thin', color:{argb:'FFD6DCEE'}},
+        bottom:{style:'thin', color:{argb:'FFD6DCEE'}},
+        right:{style:'thin', color:{argb:'FFD6DCEE'}},
+      };
+    }
+  }
+
+  sheet.views = [{ state:'frozen', xSplit:2, ySplit: subHeaderRowIdx }];
+  sheet.getColumn(1).width = 7;
+  sheet.getColumn(2).width = 26;
+  for (var c3 = 3; c3 <= numCols; c3++) sheet.getColumn(c3).width = 14;
 }
 
-// Exporta a CSV (se abre directo en Excel) los datos que se están viendo
-// con los filtros actuales. Esta versión pública no genera el .xlsx con
-// el formato de marca — ese export completo sigue disponible en el
-// dashboard interno de iUNGO.
-function exportExcel(){
+async function exportExcel(){
   var btn = document.getElementById('exportBtn');
   var originalLabel = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '⏳ Generando...';
 
   try {
-    var rows = getFilteredRows();
-    var header = ['No.','Cadena','Servicio','Restaurante','Mes','Consumo','Unidad','Costo/unidad','Cargo P&L (Q)'];
-    var lines = [header.map(csvEscape_).join(';')];
-    rows.forEach(function(r){
-      lines.push([
-        r.restNo || '', r.chain, r.utility, r.restaurant, r.month,
-        r.tarifaFija ? 'Tarifa fija' : (r.consumo === null || r.consumo === undefined ? '' : r.consumo),
-        r.unit,
-        r.costo === null || r.costo === undefined ? '' : r.costo,
-        r.cargo === null || r.cargo === undefined ? 0 : r.cargo,
-      ].map(csvEscape_).join(';'));
-    });
-    var csv = '\uFEFF' + lines.join('\r\n'); // BOM para que Excel abra bien los acentos
-    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    if (typeof ExcelJS === 'undefined') {
+      throw new Error('No se pudo cargar la librería de Excel (revisa tu conexión a internet).');
+    }
+
+    var workbook = new ExcelJS.Workbook();
+    workbook.creator = 'bia | iUNGO F&A';
+    workbook.created = new Date();
+
+    // Reutiliza el logo que ya está embebido en la barra superior — así no
+    // hay que duplicar el base64 en el archivo.
+    var logoImageId = null;
+    try {
+      var logoImgEl = document.querySelector('.topbar img.logo');
+      var logoDataUri = logoImgEl ? logoImgEl.getAttribute('src') : '';
+      var logoBase64Raw = logoDataUri.replace(/^data:image\/png;base64,/, '');
+      if (logoBase64Raw) logoImageId = workbook.addImage({ base64: logoBase64Raw, extension: 'png' });
+    } catch(e) { logoImageId = null; }
+
+    var monthsAll = ALL_MONTHS;
+    var fromIdx = monthsAll.indexOf(FILTERS.monthFrom); if (fromIdx < 0) fromIdx = 0;
+    var toIdx = monthsAll.indexOf(FILTERS.monthTo); if (toIdx < 0) toIdx = monthsAll.length - 1;
+
+    var sheetsBuilt = 0;
+    var datasets = RAW.datasets || [];
+    for (var i = 0; i < datasets.length; i++) {
+      var ds = datasets[i];
+      if (ds.error) continue;
+      if (FILTERS.chain !== '__all__' && ds.chain !== FILTERS.chain) continue;
+      if (FILTERS.utility !== '__all__' && ds.utility !== FILTERS.utility) continue;
+
+      var months = (ds.months || []).filter(function(m){
+        var idx = monthsAll.indexOf(m);
+        return idx >= fromIdx && idx <= toIdx;
+      });
+      if (!months.length) continue;
+
+      var restaurants = ds.restaurants || [];
+      var selRestaurantName = null;
+      if (FILTERS.search) {
+        var parts = FILTERS.search.split('|');
+        var selChain = parts[0];
+        selRestaurantName = parts.slice(1).join('|');
+        if (ds.chain !== selChain) continue;
+        restaurants = restaurants.filter(function(r){ return r.name === selRestaurantName; });
+      }
+      if (!restaurants.length) continue;
+
+      var utilityShort = ds.utility === 'Energía Eléctrica' ? 'EE' : 'Agua';
+      var rawSheetName = selRestaurantName ? (selRestaurantName + ' - ' + utilityShort) : (ds.chain + ' ' + utilityShort);
+      var sheetName = rawSheetName.replace(/[:\\\/\?\*\[\]]/g, '').slice(0, 31);
+      var sheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
+
+      buildFormattedSheetXlsx_(sheet, ds, months, restaurants, logoImageId);
+      sheetsBuilt++;
+    }
+
+    if (sheetsBuilt === 0) {
+      var s = workbook.addWorksheet('Sin datos');
+      s.getRow(1).getCell(1).value = 'No hay datos para el filtro seleccionado.';
+    }
+
+    var buffer = await workbook.xlsx.writeBuffer();
+    var blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
     a.href = url;
     var stamp = new Date().toISOString().slice(0,10);
-    a.download = 'bia_consumos_' + stamp + '.csv';
+    a.download = 'bia_consumos_' + stamp + '.xlsx';
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
   } catch (err) {
-    alert('No se pudo generar el archivo: ' + (err && err.message ? err.message : err));
+    alert('No se pudo generar el Excel: ' + (err && err.message ? err.message : err));
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalLabel;
