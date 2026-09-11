@@ -269,7 +269,37 @@ function onDataLoaded(data){
   renderErrorBanner(errors);
   populateMonthSelectors();
   populateRestaurantOptions();
+  syncChainChipsVisibility();
   render();
+}
+
+// Oculta los chips de cadena (Panda Express / Applebee's) que no tengan
+// datos en el JSON cargado. Así el mismo index.html sirve tanto para la
+// vista gerencial (ambas cadenas) como para las vistas segmentadas
+// (solo Panda o solo Applebee's) sin tocar código — el filtrado real ya
+// viene hecho desde el data.json que publica Apps Script.
+function syncChainChipsVisibility(){
+  var chainsPresentes = {};
+  (RAW.datasets||[]).forEach(function(ds){ chainsPresentes[ds.chain] = true; });
+  var toggle = document.getElementById('chainToggle');
+  if (!toggle) return;
+  toggle.querySelectorAll('.chip').forEach(function(chip){
+    var c = chip.getAttribute('data-chain');
+    if (c === '__all__') return; // el chip "Todas" siempre se muestra
+    chip.style.display = chainsPresentes[c] ? '' : 'none';
+  });
+  var visibles = Object.keys(chainsPresentes);
+  if (visibles.length === 1) {
+    var unico = toggle.querySelector('.chip[data-chain="' + visibles[0] + '"]');
+    if (unico) {
+      toggle.querySelectorAll('.chip').forEach(function(c){ c.classList.remove('active'); });
+      unico.classList.add('active');
+      FILTERS.chain = visibles[0];
+    }
+    // con una sola cadena, oculta también el chip "Todas" — no aporta nada
+    var todos = toggle.querySelector('.chip[data-chain="__all__"]');
+    if (todos) todos.style.display = 'none';
+  }
 }
 
 function renderErrorBanner(errors){
