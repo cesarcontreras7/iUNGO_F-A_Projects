@@ -83,6 +83,36 @@
   .chip.active.red{border-color:var(--red); color:var(--red); background:#FDECED;}
   .field.grow{flex:1;}
 
+  /* ---------- multiselect de restaurantes ---------- */
+  .msel{position:relative;}
+  .msel-toggle{
+    border:1.5px solid var(--line); border-radius:9px; padding:8px 10px; font-size:13.5px;
+    font-family:'Inter'; background:#fff; color:var(--ink); min-width:150px; width:100%;
+    text-align:left; cursor:pointer; display:flex; align-items:center; justify-content:space-between; gap:8px;
+  }
+  .msel-toggle::after{content:'▾'; color:var(--muted); font-size:11px;}
+  .msel-toggle:focus{outline:2px solid var(--blue); outline-offset:1px; border-color:var(--blue);}
+  .msel-panel{
+    position:absolute; top:calc(100% + 6px); left:0; z-index:50; width:360px; max-width:90vw;
+    background:#fff; border:1.5px solid var(--line); border-radius:12px; box-shadow:var(--shadow); padding:10px;
+  }
+  .msel-search input{
+    width:100%; border:1.5px solid var(--line); border-radius:8px; padding:7px 9px; font-size:13px;
+    font-family:'Inter'; margin-bottom:8px; color:var(--ink);
+  }
+  .msel-actions{display:flex; gap:8px; margin-bottom:8px;}
+  .msel-actions button{
+    border:1px solid var(--line); background:#F7F9FE; color:var(--navy); font-size:11.5px; font-weight:600;
+    padding:5px 9px; border-radius:7px; cursor:pointer; font-family:'Inter';
+  }
+  .msel-actions button:hover{background:#EEF2FC;}
+  .msel-list{max-height:280px; overflow:auto; display:flex; flex-direction:column; gap:1px;}
+  .msel-item{display:flex; align-items:center; gap:8px; padding:6px; border-radius:7px; font-size:13px; cursor:pointer;}
+  .msel-item:hover{background:#F7F9FE;}
+  .msel-item input{margin:0;}
+  .msel-item.msel-hidden{display:none;}
+  .msel-group-label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); font-weight:700; padding:8px 6px 4px;}
+
   /* ---------- KPI cards ---------- */
   .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px;}
   .kpi{
@@ -198,9 +228,17 @@
       </div>
       <div class="field grow">
         <label>Restaurante</label>
-        <select id="searchBox">
-          <option value="">Todos los restaurantes</option>
-        </select>
+        <div class="msel" id="restaurantMsel">
+          <button type="button" class="msel-toggle" id="mselToggle">Todos los restaurantes</button>
+          <div class="msel-panel" id="mselPanel" hidden>
+            <div class="msel-search"><input type="text" id="mselSearchInput" placeholder="Buscar restaurante…"></div>
+            <div class="msel-actions">
+              <button type="button" id="mselSelectAll">Seleccionar todos</button>
+              <button type="button" id="mselClear">Limpiar</button>
+            </div>
+            <div class="msel-list" id="mselList"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -220,7 +258,7 @@
 // ESTADO
 // ---------------------------------------------------------------------------
 var RAW = null;           // { generatedAt, datasets: [...] }
-var FILTERS = { chain: '__all__', utility: '__all__', monthFrom: null, monthTo: null, search: '' };
+var FILTERS = { chain: '__all__', utility: '__all__', monthFrom: null, monthTo: null, restaurants: [] };
 var CHARTS = {};
 var COLORS = { navy:'#1D3565', navyDeep:'#0F1C50', red:'#EE2C37', blue:'#4888FD', good:'#1FA971' };
 var ALL_MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -341,8 +379,8 @@ function populateMonthSelectors(){
 function restaurantKey(chain, name){ return chain + '|' + name; }
 
 function populateRestaurantOptions(){
-  var sel = document.getElementById('searchBox');
-  var current = FILTERS.search;
+  var list = document.getElementById('mselList');
+  var previouslySelected = FILTERS.restaurants.slice();
   var seen = {};
   var options = [];
   (RAW.datasets||[]).forEach(function(ds){
@@ -358,7 +396,7 @@ function populateRestaurantOptions(){
         key:key,
         sortNo: isNaN(noNum) ? 9999 : noNum,
         chain: ds.chain,
-        label: (noLabel ? noLabel + ' — ' : '') + rest.name + ' (' + ds.chain + ')',
+        label: (noLabel ? noLabel + ' — ' : '') + rest.name,
       });
     });
   });
@@ -367,15 +405,30 @@ function populateRestaurantOptions(){
     return a.sortNo - b.sortNo;
   });
 
-  sel.innerHTML = '<option value="">Todos los restaurantes</option>';
-  options.forEach(function(o){ sel.appendChild(new Option(o.label, o.key)); });
+  // conserva solo las selecciones que siguen existiendo con el filtro de cadena/servicio actual
+  FILTERS.restaurants = previouslySelected.filter(function(k){ return seen[k]; });
 
-  if (current && seen[current]) {
-    sel.value = current;
-  } else {
-    FILTERS.search = '';
-    sel.value = '';
-  }
+  var lastChain = null;
+  var html = '';
+  options.forEach(function(o){
+    if (o.chain !== lastChain) {
+      html += '<div class="msel-group-label">' + o.chain + '</div>';
+      lastChain = o.chain;
+    }
+    var checked = FILTERS.restaurants.indexOf(o.key) !== -1 ? 'checked' : '';
+    html += '<label class="msel-item" data-search="' + o.label.toLowerCase() + '">' +
+      '<input type="checkbox" value="' + o.key.replace(/"/g,'&quot;') + '" ' + checked + '>' +
+      '<span>' + o.label + '</span></label>';
+  });
+  list.innerHTML = html || '<div class="hint" style="padding:10px;">Sin restaurantes para este filtro.</div>';
+
+  updateMselToggleLabel();
+}
+
+function updateMselToggleLabel(){
+  var toggle = document.getElementById('mselToggle');
+  var n = FILTERS.restaurants.length;
+  toggle.textContent = n === 0 ? 'Todos los restaurantes' : (n === 1 ? '1 restaurante seleccionado' : n + ' restaurantes seleccionados');
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +448,7 @@ function getFilteredRows(opts){
     if (FILTERS.chain !== '__all__' && ds.chain !== FILTERS.chain) return;
     if (FILTERS.utility !== '__all__' && ds.utility !== FILTERS.utility) return;
     (ds.restaurants||[]).forEach(function(rest){
-      if (!opts.ignoreSearch && FILTERS.search && restaurantKey(ds.chain, rest.name) !== FILTERS.search) return;
+      if (!opts.ignoreSearch && FILTERS.restaurants.length && FILTERS.restaurants.indexOf(restaurantKey(ds.chain, rest.name)) === -1) return;
       Object.keys(rest.months||{}).forEach(function(month){
         if (!monthInRange(month)) return;
         var mm = rest.months[month];
@@ -470,10 +523,11 @@ function renderCharts(rows){
   var chainTitleEl = document.getElementById('chainChartTitle');
   var chainHintEl = document.getElementById('chainChartHint');
 
-  if (FILTERS.search) {
+  if (FILTERS.restaurants.length === 1) {
     // -- vista "administrador de restaurante": tarjetas KPI simples en vez de una gráfica de ranking --
-    var selChain = FILTERS.search.split('|')[0];
-    var selName = FILTERS.search.split('|').slice(1).join('|');
+    // (solo tiene sentido con exactamente 1 restaurante seleccionado; con 2+ cae en la vista corporativa de abajo)
+    var selChain = FILTERS.restaurants[0].split('|')[0];
+    var selName = FILTERS.restaurants[0].split('|').slice(1).join('|');
 
     // usamos las filas SIN el filtro de restaurante para poder comparar contra los pares
     var peerRows = getFilteredRows({ ignoreSearch: true }).filter(function(r){ return r.chain === selChain; });
@@ -546,8 +600,8 @@ function renderCharts(rows){
   var topHint = document.getElementById('topHint');
   var topBox = document.getElementById('topBox');
 
-  if (FILTERS.search) {
-    var selName2 = FILTERS.search.split('|').slice(1).join('|');
+  if (FILTERS.restaurants.length === 1) {
+    var selName2 = FILTERS.restaurants[0].split('|').slice(1).join('|');
     if (topPanelTitleEl) topPanelTitleEl.textContent = 'Evolución mensual — ' + selName2;
     if (topHint) topHint.textContent = 'Consumo (barras) y Cargo P&L (línea) por mes';
     if (topBox && !document.getElementById('topChart')) topBox.innerHTML = '<canvas id="topChart"></canvas>';
@@ -990,18 +1044,21 @@ async function exportExcel(){
       if (!months.length) continue;
 
       var restaurants = ds.restaurants || [];
-      var selRestaurantName = null;
-      if (FILTERS.search) {
-        var parts = FILTERS.search.split('|');
-        var selChain = parts[0];
-        selRestaurantName = parts.slice(1).join('|');
-        if (ds.chain !== selChain) continue;
-        restaurants = restaurants.filter(function(r){ return r.name === selRestaurantName; });
+      var selectedNamesInChain = null;
+      if (FILTERS.restaurants.length) {
+        selectedNamesInChain = FILTERS.restaurants
+          .filter(function(k){ return k.split('|')[0] === ds.chain; })
+          .map(function(k){ return k.split('|').slice(1).join('|'); });
+        if (!selectedNamesInChain.length) continue; // ningún restaurante seleccionado pertenece a esta cadena/servicio
+        restaurants = restaurants.filter(function(r){ return selectedNamesInChain.indexOf(r.name) !== -1; });
       }
       if (!restaurants.length) continue;
 
       var utilityShort = ds.utility === 'Energía Eléctrica' ? 'EE' : 'Agua';
-      var rawSheetName = selRestaurantName ? (selRestaurantName + ' - ' + utilityShort) : (ds.chain + ' ' + utilityShort);
+      var sheetLabel = selectedNamesInChain && selectedNamesInChain.length === 1
+        ? selectedNamesInChain[0]
+        : (selectedNamesInChain ? ds.chain + ' (selección)' : ds.chain);
+      var rawSheetName = sheetLabel + ' ' + utilityShort;
       var sheetName = rawSheetName.replace(/[:\\\/\?\*\[\]]/g, '').slice(0, 31);
       var sheet = workbook.addWorksheet(sheetName, { views: [{ showGridLines: false }] });
 
@@ -1038,7 +1095,44 @@ async function exportExcel(){
 // ---------------------------------------------------------------------------
 document.getElementById('refreshBtn').addEventListener('click', loadData);
 document.getElementById('exportBtn').addEventListener('click', exportExcel);
-document.getElementById('searchBox').addEventListener('change', function(e){ FILTERS.search = e.target.value; render(); });
+document.getElementById('mselToggle').addEventListener('click', function(){
+  document.getElementById('mselPanel').hidden = !document.getElementById('mselPanel').hidden;
+});
+document.addEventListener('click', function(e){
+  var wrap = document.getElementById('restaurantMsel');
+  if (wrap && !wrap.contains(e.target)) document.getElementById('mselPanel').hidden = true;
+});
+document.getElementById('mselList').addEventListener('change', function(e){
+  if (e.target.tagName !== 'INPUT') return;
+  var key = e.target.value;
+  var idx = FILTERS.restaurants.indexOf(key);
+  if (e.target.checked && idx === -1) FILTERS.restaurants.push(key);
+  if (!e.target.checked && idx !== -1) FILTERS.restaurants.splice(idx, 1);
+  updateMselToggleLabel();
+  render();
+});
+document.getElementById('mselSelectAll').addEventListener('click', function(){
+  var visibleChecks = document.querySelectorAll('#mselList .msel-item:not(.msel-hidden) input[type="checkbox"]');
+  visibleChecks.forEach(function(c){
+    c.checked = true;
+    if (FILTERS.restaurants.indexOf(c.value) === -1) FILTERS.restaurants.push(c.value);
+  });
+  updateMselToggleLabel();
+  render();
+});
+document.getElementById('mselClear').addEventListener('click', function(){
+  document.querySelectorAll('#mselList input[type="checkbox"]').forEach(function(c){ c.checked = false; });
+  FILTERS.restaurants = [];
+  updateMselToggleLabel();
+  render();
+});
+document.getElementById('mselSearchInput').addEventListener('input', function(e){
+  var q = e.target.value.toLowerCase();
+  document.querySelectorAll('#mselList .msel-item').forEach(function(item){
+    var match = item.getAttribute('data-search').indexOf(q) !== -1;
+    item.classList.toggle('msel-hidden', !match);
+  });
+});
 document.getElementById('monthFrom').addEventListener('change', function(e){ FILTERS.monthFrom = e.target.value; render(); });
 document.getElementById('monthTo').addEventListener('change', function(e){ FILTERS.monthTo = e.target.value; render(); });
 
