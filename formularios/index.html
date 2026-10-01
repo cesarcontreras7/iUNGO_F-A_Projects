@@ -278,6 +278,45 @@
     .modal-caja{ max-height: none; border-radius: 0; }
   }
 
+  .compartir{
+    border: 1px dashed var(--borde);
+    border-radius: 8px;
+    padding: 14px 16px;
+    background: #FBF9FC;
+  }
+  .compartir-titulo{
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--texto);
+    margin-bottom: 4px;
+  }
+  .compartir-ayuda{
+    display: block;
+    font-size: 12.5px;
+    color: var(--texto-suave);
+    margin-bottom: 10px;
+  }
+  .compartir-botones{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .btn-copiar{
+    font-family: 'Source Sans 3', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--acento);
+    background: #fff;
+    border: 1px solid var(--acento);
+    border-radius: 6px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .btn-copiar:hover{ background: var(--acento); color: #fff; }
+  .btn-copiar.copiado{ background: var(--acento); color: #fff; }
+
   footer{
     max-width: 960px;
     margin: 0 auto;
@@ -313,7 +352,15 @@
         <li>Revisión interna de Créditos y Cobros antes de aprobar</li>
         <li>Soporta GT14 (Controles Gerenciales / iUNGO) y GT25 (Sar Latin America)</li>
       </ul>
-      <button class="boton" type="button" onclick="abrirFormulario('https://script.google.com/a/macros/iungo.co/s/AKfycbxV8fR3zo48CzDVQBtPnDCYRLEnffgBAEQxiSlub4mSq4SeQsgOOcCwIH9GFv9ICECH/exec', 'Solicitud de Crédito')">Abrir formulario de crédito</button>
+      <div class="compartir">
+        <span class="compartir-titulo">Enlace para compartir con el cliente</span>
+        <span class="compartir-ayuda">Abre el formulario con la sociedad facturadora ya seleccionada.</span>
+        <div class="compartir-botones">
+          <button type="button" class="btn-copiar" onclick="copiarEnlace('GT14', this)">Copiar enlace GT14</button>
+          <button type="button" class="btn-copiar" onclick="copiarEnlace('GT25', this)">Copiar enlace GT25</button>
+        </div>
+      </div>
+      <button class="boton" type="button" onclick="abrirFormulario(URL_CREDITO, 'Solicitud de Crédito')">Abrir formulario de crédito</button>
     </article>
 
     <article class="tarjeta prefacturas">
@@ -349,6 +396,38 @@
 </div>
 
 <script>
+  var URL_CREDITO = 'https://script.google.com/a/macros/iungo.co/s/AKfycbxV8fR3zo48CzDVQBtPnDCYRLEnffgBAEQxiSlub4mSq4SeQsgOOcCwIH9GFv9ICECH/exec';
+  var SOCIEDADES = {
+    GT14: 'Controles Gerenciales',
+    GT25: 'Sar Latin America'
+  };
+
+  function urlCredito(empresa){
+    return empresa ? URL_CREDITO + '?empresa=' + encodeURIComponent(empresa) : URL_CREDITO;
+  }
+
+  function enlacePersonalizado(empresa){
+    return location.origin + location.pathname + '?empresa=' + encodeURIComponent(empresa);
+  }
+
+  function copiarEnlace(empresa, boton){
+    var enlace = enlacePersonalizado(empresa);
+    var textoOriginal = boton.textContent;
+    function listo(){
+      boton.textContent = 'Copiado ✓';
+      boton.classList.add('copiado');
+      setTimeout(function(){
+        boton.textContent = textoOriginal;
+        boton.classList.remove('copiado');
+      }, 2000);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(enlace).then(listo, function(){ window.prompt('Copie este enlace:', enlace); });
+    } else {
+      window.prompt('Copie este enlace:', enlace);
+    }
+  }
+
   function abrirFormulario(url, titulo){
     document.getElementById('modalTitulo').textContent = titulo;
     document.getElementById('modalIframe').src = url;
@@ -370,6 +449,15 @@
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape') cerrarFormulario();
   });
+
+  // Enlace personalizado: .../formularios/?empresa=GT14 (o GT25) abre
+  // directamente el formulario de crédito con esa sociedad seleccionada.
+  (function(){
+    var empresa = (new URLSearchParams(location.search).get('empresa') || '').toUpperCase();
+    if (SOCIEDADES[empresa]){
+      abrirFormulario(urlCredito(empresa), 'Solicitud de Crédito · ' + SOCIEDADES[empresa]);
+    }
+  })();
 </script>
 
 </body>
