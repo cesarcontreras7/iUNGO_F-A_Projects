@@ -372,7 +372,7 @@
         <li>Catálogo de servicios, centros de costo y clientes en vivo</li>
         <li>Soporta clientes locales y del exterior, con IVA o ISR según corresponda</li>
       </ul>
-      <button class="boton" type="button" onclick="abrirFormulario('https://script.google.com/a/macros/iungo.co/s/AKfycbxiYIPxvm5S6FSUCNeqZr90HpXQR1DmYmusBZLUqx4DqFgAmmFCW9Wgy67JOBOcMabH/exec', 'Pre-Facturas')">Abrir formulario de pre-facturas</button>
+      <button class="boton" type="button" onclick="abrirFormulario(URL_PREFACTURAS, 'Pre-Facturas')">Abrir formulario de pre-facturas</button>
     </article>
 
   </div>
@@ -397,6 +397,8 @@
 
 <script>
   var URL_CREDITO = 'https://script.google.com/a/macros/iungo.co/s/AKfycbxV8fR3zo48CzDVQBtPnDCYRLEnffgBAEQxiSlub4mSq4SeQsgOOcCwIH9GFv9ICECH/exec';
+  // Formulario Pre-Facturas: si se crea una implementación nueva en Apps Script, solo cambia esta línea.
+  var URL_PREFACTURAS = 'https://script.google.com/a/macros/iungo.co/s/AKfycbwAMB1vD3r3YRnJiyNXFFKf0OhuIKelIuJVRFyDPkcDVjVSNo_8ZeGXNeBDs3OlfYpI/exec';
   var SOCIEDADES = {
     GT14: 'Controles Gerenciales',
     GT25: 'Sar Latin America'
