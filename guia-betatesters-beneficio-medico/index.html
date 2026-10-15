@@ -266,9 +266,9 @@ footer small{display:block;color:var(--muted)}
         <ul>
           <li><strong>Medicamentos:</strong> receta firmada y sellada.</li>
           <li><strong>Laboratorios y rayos X:</strong> orden médica.</li>
-          <li><strong>Lentes y aros:</strong> receta con graduación. Tope de Q 7,000, una vez al año.</li>
+          <li><strong>Lentes y aros:</strong> receta con graduación. Límite de Q 7,000, una vez al año.</li>
           <li><strong>Hospitalización:</strong> estado de cuenta del hospital.</li>
-          <li><strong>Más de Q 2,500:</strong> comprobante de pago o transferencia.</li>
+          <li><strong>Gastos mayores a Q 2,500:</strong> es obligatorio adjuntar comprobantes de pago (voucher, transferencia).</li>
         </ul>
       </div>
     </div>
@@ -423,7 +423,7 @@ function nav(back,label,act){
 function docsFor(){
   var f=ui.f, t=TIPOS[f.tipo], L=[['Factura original','Ya la cargaste en el paso 1.',true]];
   t.docs.forEach(function(x){L.push([x[0],x[1],false])});
-  if(num(f.monto)>2500) L.push(['Comprobante de pago o transferencia','Las facturas de más de Q 2,500 lo requieren.',false]);
+  if(num(f.monto)>2500) L.push(['Comprobante de pago','Obligatorio en gastos mayores a Q 2,500 (voucher, transferencia).',false]);
   return L;
 }
 function viewIngreso(){
@@ -482,7 +482,7 @@ function viewReint(){
       '<tr><td>Te reintegran (80%)</td><td style="color:var(--green)">'+fq(cob)+'</td></tr>'+
       '<tr><td>Tu copago (20%)</td><td style="color:var(--amber)">'+fq(cop)+'</td></tr>'+
       '<tr><td>Saldo de '+t.g+'</td><td>'+fq(ant)+' → '+fq(des)+'</td></tr></tbody></table>'+
-      (f.tipo==='lentes'?'<div class="tip warn">Lentes y aros: una vez al año y con tope de Q 7,000.'+(m>7000?' <strong>Tu monto supera el tope.</strong>':'')+'</div>':'')+
+      (f.tipo==='lentes'?'<div class="tip warn">Lentes y aros: una vez al año y con límite de Q 7,000.'+(m>7000?' <strong>Tu monto supera el límite.</strong>':'')+'</div>':'')+
       msgHtml()+nav(true,'Enviar a Contabilidad','enviar');
   }
   return h+'</div>';
